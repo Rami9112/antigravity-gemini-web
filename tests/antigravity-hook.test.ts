@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   prepareIsolatedAntigravityUserDataDir,
   resolveAntigravityPaths,
+  resolveStockAntigravityUserDataDir,
   rewriteLanguageServerArgs,
 } from "../src/hook/antigravity-hook.js";
 
@@ -45,10 +46,27 @@ describe("antigravity-hook", () => {
     ]);
   });
 
-  it("resolves Antigravity installation paths", () => {
-    const paths = resolveAntigravityPaths();
-    expect(paths.antigravityExe).toContain("Antigravity.exe");
-    expect(paths.languageServerExe).toContain("language_server.exe");
+  it("resolves Antigravity installation paths for Windows, macOS, and Linux", () => {
+    const winPaths = resolveAntigravityPaths(undefined, "win32");
+    expect(winPaths.antigravityExe).toContain("Antigravity.exe");
+    expect(winPaths.languageServerExe).toContain("language_server.exe");
+
+    const macPaths = resolveAntigravityPaths(undefined, "darwin");
+    expect(macPaths.antigravityExe).toContain("Antigravity.app");
+    expect(macPaths.antigravityExe).toContain(path.join("Contents", "MacOS", "Antigravity"));
+    expect(macPaths.languageServerExe).toContain("language_server");
+
+    const linuxPaths = resolveAntigravityPaths(undefined, "linux");
+    expect(linuxPaths.antigravityExe.toLowerCase()).toContain("antigravity");
+    expect(linuxPaths.languageServerExe).toContain("language_server");
+  });
+
+  it("resolves stock Antigravity user-data directories per platform", () => {
+    expect(resolveStockAntigravityUserDataDir("win32")).toContain("Antigravity");
+    expect(resolveStockAntigravityUserDataDir("darwin")).toContain(
+      path.join("Library", "Application Support", "Antigravity"),
+    );
+    expect(resolveStockAntigravityUserDataDir("linux")).toContain("Antigravity");
   });
 
   it("creates an isolated user-data-dir for multi-instance Antigravity launches", () => {

@@ -6,3 +6,4 @@ export * from "./proxy/ccpa-server.js";
 export * from "./hook/antigravity-hook.js";
 export * from "./stealth/chrome-stealth.js";
 export * from "./stealth/chromium-launcher.js";
+export * from "./utils/platform.js";

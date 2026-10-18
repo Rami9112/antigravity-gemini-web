@@ -12,6 +12,7 @@ import {
 } from "./hook/antigravity-hook.js";
 import { startCcpaBridgeServer } from "./proxy/ccpa-server.js";
 import { launchChromiumStealthHost } from "./stealth/chromium-launcher.js";
+import { resolvePlatformDescriptor } from "./utils/platform.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -41,6 +42,7 @@ async function runDoctor(port: number, cdpPort: number): Promise<void> {
   const bridgeUrl = `http://127.0.0.1:${port}`;
   const cdpUrl = `http://127.0.0.1:${cdpPort}`;
   const hookStatus = await getAntigravityHookStatus(bridgeUrl);
+  const platformDesc = resolvePlatformDescriptor();
 
   let cdpHealthy = false;
   try {
@@ -59,9 +61,12 @@ async function runDoctor(port: number, cdpPort: number): Promise<void> {
   }
 
   console.log("=== Antigravity ↔ Gemini Web Doctor ===");
+  console.log(
+    `Host Platform         : ${platformDesc.osPlatform} ${platformDesc.cpuArch} (${platformDesc.targetId})`,
+  );
   console.log(`Antigravity Installed : ${hookStatus.installPaths.exists ? "YES" : "NO"}`);
-  console.log(`  Antigravity.exe     : ${hookStatus.installPaths.antigravityExe}`);
-  console.log(`  language_server.exe : ${hookStatus.installPaths.languageServerExe}`);
+  console.log(`  Antigravity Binary  : ${hookStatus.installPaths.antigravityExe}`);
+  console.log(`  Language Server     : ${hookStatus.installPaths.languageServerExe}`);
   console.log(`Hook Status           : ${hookStatus.isHooked ? "HOOKED" : "DEFAULT (Unmodified)"}`);
   console.log(`  Active Target URL   : ${hookStatus.activeTargetUrl}`);
   console.log(`  User CLOUD_CODE_URL : ${hookStatus.userEnvCloudCodeUrl ?? "(not set)"}`);
