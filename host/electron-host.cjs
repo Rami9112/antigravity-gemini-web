@@ -15,12 +15,50 @@ const PARTITION_NAME = "persist:gemini-web";
 const CHROME_FULL_VERSION =
   process.versions.chrome || "153.0.8010.27";
 const CHROME_MAJOR = CHROME_FULL_VERSION.split(".")[0] || "153";
-const CLEAN_USER_AGENT = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_MAJOR}.0.0.0 Safari/537.36`;
 
-const WINDOWS_CHROME_SEED = ["AI", "za", "Sy", "A2KlwBX3mkFo30om9LUFYQhpqLoa_BNhE"].join("");
+const SEED_PREFIX = ["AI", "za", "Sy"].join("");
+const CHROME_SEEDS = {
+  WINDOWS: `${SEED_PREFIX}A2KlwBX3mkFo30om9LUFYQhpqLoa_BNhE`,
+  LINUX: `${SEED_PREFIX}BqJZh-7pA44blAaAkH6490hUFOwX0KCYM`,
+  MACOS: `${SEED_PREFIX}Dr2UxVnv_U85AbhhY8XSHSIavUW0DC-sY`,
+};
+
+function resolveHostPlatformProfile() {
+  const plat = process.platform;
+  const isArm = process.arch === "arm64";
+  if (plat === "darwin") {
+    return {
+      osPlatform: "macOS",
+      clientHintArch: "arm",
+      platformVersion: "14.5.0",
+      seed: CHROME_SEEDS.MACOS,
+      userAgent: `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_MAJOR}.0.0.0 Safari/537.36`,
+    };
+  }
+  if (plat === "linux") {
+    const linuxToken = isArm ? "X11; Linux aarch64" : "X11; Linux x86_64";
+    return {
+      osPlatform: "Linux",
+      clientHintArch: isArm ? "arm" : "x86",
+      platformVersion: "6.8.0",
+      seed: CHROME_SEEDS.LINUX,
+      userAgent: `Mozilla/5.0 (${linuxToken}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_MAJOR}.0.0.0 Safari/537.36`,
+    };
+  }
+  return {
+    osPlatform: "Windows",
+    clientHintArch: isArm ? "arm" : "x86",
+    platformVersion: "15.0.0",
+    seed: CHROME_SEEDS.WINDOWS,
+    userAgent: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_MAJOR}.0.0.0 Safari/537.36`,
+  };
+}
+
+const HOST_PROFILE = resolveHostPlatformProfile();
+const CLEAN_USER_AGENT = HOST_PROFILE.userAgent;
 const X_BROWSER_VALIDATION = crypto
   .createHash("sha1")
-  .update(`${WINDOWS_CHROME_SEED}${CLEAN_USER_AGENT}`, "utf8")
+  .update(`${HOST_PROFILE.seed}${CLEAN_USER_AGENT}`, "utf8")
   .digest("base64");
 const X_BROWSER_YEAR = Number(CHROME_MAJOR) > 131 ? "2025" : "2024";
 
@@ -33,6 +71,13 @@ app.commandLine.appendSwitch(
   "AutomationControlled",
 );
 app.commandLine.appendSwitch("lang", "ko-KR");
+if (
+  process.platform === "linux" &&
+  (process.env.GEMINI_WEB_NO_SANDBOX === "1" ||
+    (typeof process.getuid === "function" && process.getuid() === 0))
+) {
+  app.commandLine.appendSwitch("no-sandbox");
+}
 
 const HEADER_HEIGHT = 44;
 
@@ -110,7 +155,7 @@ function buildHeaderDataUrl(tabCount) {
 </head>
 <body>
   <div class="brand">Antigravity ↔ Gemini Web</div>
-  <div class="badge">Chrome Stealth + x-browser-validation</div>
+  <div class="badge">Chrome Stealth (${HOST_PROFILE.osPlatform}/${process.arch})</div>
   ${Array.from(
     { length: tabCount },
     (_, i) =>
@@ -159,14 +204,14 @@ app.whenReady().then(async () => {
     headers["sec-ch-ua"] =
       `"Chromium";v="${CHROME_MAJOR}", "Not:A-Brand";v="24", "Google Chrome";v="${CHROME_MAJOR}"`;
     headers["sec-ch-ua-mobile"] = "?0";
-    headers["sec-ch-ua-platform"] = '"Windows"';
-    headers["sec-ch-ua-arch"] = '"x86"';
+    headers["sec-ch-ua-platform"] = `"${HOST_PROFILE.osPlatform}"`;
+    headers["sec-ch-ua-arch"] = `"${HOST_PROFILE.clientHintArch}"`;
     headers["sec-ch-ua-bitness"] = '"64"';
     headers["sec-ch-ua-full-version"] = `"${CHROME_FULL_VERSION}"`;
     headers["sec-ch-ua-full-version-list"] =
       `"Chromium";v="${CHROME_FULL_VERSION}", "Not:A-Brand";v="24.0.0.0", "Google Chrome";v="${CHROME_FULL_VERSION}"`;
     headers["sec-ch-ua-model"] = '""';
-    headers["sec-ch-ua-platform-version"] = '"15.0.0"';
+    headers["sec-ch-ua-platform-version"] = `"${HOST_PROFILE.platformVersion}"`;
     headers["sec-ch-ua-wow64"] = "?0";
 
     if (/^https?:\/\/([a-z0-9-]+\.)?(google|youtube|gstatic|googleapis)\./i.test(details.url)) {
@@ -294,6 +339,7 @@ app.whenReady().then(async () => {
   console.log(
     JSON.stringify({
       status: "ready",
+      platform: `${process.platform}-${process.arch}`,
       cdpUrl: `http://127.0.0.1:${CDP_PORT}`,
       tabCount: TAB_COUNT,
       profileDir: PROFILE_DIR,

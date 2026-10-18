@@ -4,16 +4,89 @@ import { mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
+  osPlatformToDescriptor,
+  type SupportedCpuArch,
+  type SupportedOsPlatform,
+} from "../utils/platform.js";
+import {
   compileChromiumStealthProfile,
   ensureChromeStealthExtension,
 } from "./chrome-stealth.js";
 
-export const DEFAULT_CHROMIUM_PATHS = [
-  process.env.CHROMIUM_KERNEL_PATH ?? "",
-  process.env.CHROME_EXECUTABLE_PATH ?? "",
-  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-].filter(Boolean);
+/**
+ * Returns candidate Chrome/Chromium binary paths for the specified OS (`win32`, `darwin`, `linux`).
+ */
+export function getDefaultChromiumPaths(
+  platform: NodeJS.Platform = process.platform,
+  homedir: string = os.homedir(),
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  const explicitEnv = [
+    env.CHROMIUM_KERNEL_PATH ?? "",
+    env.CHROME_EXECUTABLE_PATH ?? "",
+  ];
+
+  if (platform === "darwin") {
+    return [
+      ...explicitEnv,
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      path.posix.join(
+        homedir,
+        "Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      ),
+      "/Applications/Chromium.app/Contents/MacOS/Chromium",
+      path.posix.join(
+        homedir,
+        "Applications/Chromium.app/Contents/MacOS/Chromium",
+      ),
+      "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
+      "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+    ].filter(Boolean);
+  }
+
+  if (platform === "linux") {
+    return [
+      ...explicitEnv,
+      "/usr/bin/google-chrome",
+      "/usr/bin/google-chrome-stable",
+      "/usr/bin/chromium",
+      "/usr/bin/chromium-browser",
+      "/snap/bin/chromium",
+      "/opt/google/chrome/chrome",
+      "/opt/chromium.org/chromium/chrome",
+      "/usr/local/bin/chrome",
+      "/usr/local/bin/chromium",
+    ].filter(Boolean);
+  }
+
+  // Windows (win32-x64 and win32-arm64)
+  const progFiles = env.PROGRAMFILES ?? "C:\\Program Files";
+  const progFilesX86 = env["PROGRAMFILES(X86)"] ?? "C:\\Program Files (x86)";
+  const localAppData =
+    env.LOCALAPPDATA ?? path.win32.join(homedir, "AppData", "Local");
+
+  return [
+    ...explicitEnv,
+    path.win32.join(progFiles, "Google", "Chrome", "Application", "chrome.exe"),
+    path.win32.join(
+      progFilesX86,
+      "Google",
+      "Chrome",
+      "Application",
+      "chrome.exe",
+    ),
+    path.win32.join(
+      localAppData,
+      "Google",
+      "Chrome",
+      "Application",
+      "chrome.exe",
+    ),
+    path.win32.join(progFiles, "Chromium", "Application", "chrome.exe"),
+  ].filter(Boolean);
+}
+
+export const DEFAULT_CHROMIUM_PATHS = getDefaultChromiumPaths();
 
 export interface LaunchChromiumStealthHostOptions {
   cdpPort?: number;
@@ -23,6 +96,8 @@ export interface LaunchChromiumStealthHostOptions {
   executablePath?: string;
   chromeFullVersion?: string;
   targetUrl?: string;
+  osPlatform?: SupportedOsPlatform;
+  cpuArch?: SupportedCpuArch;
 }
 
 export interface PreparedChromiumStealthEnvironment {
@@ -34,27 +109,36 @@ export interface PreparedChromiumStealthEnvironment {
   args: string[];
 }
 
-export function resolveChromiumExecutable(explicitPath?: string): {
+export function resolveChromiumExecutable(
+  explicitPath?: string,
+  platform: NodeJS.Platform = process.platform,
+): {
   executablePath: string;
   isCustomKernel: boolean;
 } {
+  const defaultCandidates = getDefaultChromiumPaths(platform);
   const candidates = explicitPath
-    ? [explicitPath, ...DEFAULT_CHROMIUM_PATHS]
-    : DEFAULT_CHROMIUM_PATHS;
+    ? [explicitPath, ...defaultCandidates]
+    : defaultCandidates;
 
   for (const candidate of candidates) {
     if (candidate && existsSync(candidate)) {
       const base = path.basename(candidate).toLowerCase();
-      const isCustomKernel = !base.startsWith("chrome");
+      const isStandardChrome =
+        base.startsWith("chrome") ||
+        base.startsWith("google chrome") ||
+        base.startsWith("google-chrome") ||
+        base.startsWith("chromium") ||
+        base.startsWith("brave");
       return {
         executablePath: candidate,
-        isCustomKernel,
+        isCustomKernel: !isStandardChrome,
       };
     }
   }
 
   throw new Error(
-    `Could not find Chrome/Chromium executable. Checked: ${candidates.join(", ")}`,
+    `Could not find Chrome/Chromium executable on ${platform}. Checked: ${candidates.join(", ")}`,
   );
 }
 
@@ -65,6 +149,7 @@ export function resolveChromiumExecutable(explicitPath?: string): {
 export async function prepareChromiumStealthEnvironment(
   options: LaunchChromiumStealthHostOptions = {},
 ): Promise<PreparedChromiumStealthEnvironment> {
+  const descriptor = osPlatformToDescriptor(options.osPlatform, options.cpuArch);
   const cdpPort = options.cdpPort ?? 9333;
   const profileId = options.profileId ?? "agy01";
   const chromeFullVersion = options.chromeFullVersion ?? "153.0.8010.27";
@@ -78,17 +163,24 @@ export async function prepareChromiumStealthEnvironment(
 
   await mkdir(baseStateDir, { recursive: true });
 
-  const extensionDir = await ensureChromeStealthExtension(baseStateDir);
+  const extensionDir = await ensureChromeStealthExtension(baseStateDir, {
+    osPlatform: descriptor.osPlatform,
+    cpuArch: descriptor.cpuArch,
+    chromeFullVersion,
+  });
 
   const compiled = await compileChromiumStealthProfile({
     profileId,
     profileDir: userDataDir,
     extensionPaths: [extensionDir],
     chromeFullVersion,
+    osPlatform: descriptor.osPlatform,
+    cpuArch: descriptor.cpuArch,
   });
 
   const { executablePath, isCustomKernel } = resolveChromiumExecutable(
     options.executablePath,
+    descriptor.nodePlatform,
   );
 
   const args: string[] = [
@@ -108,6 +200,14 @@ export async function prepareChromiumStealthEnvironment(
     args.push(compiled.extendedParametersFlag);
   } else {
     args.push("--disable-blink-features=AutomationControlled");
+  }
+
+  if (
+    descriptor.nodePlatform === "linux" &&
+    (process.env.GEMINI_WEB_NO_SANDBOX === "1" ||
+      (typeof process.getuid === "function" && process.getuid() === 0))
+  ) {
+    args.push("--no-sandbox");
   }
 
   args.push(targetUrl);

@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  osPlatformToDescriptor,
+  type SupportedCpuArch,
+  type SupportedOsPlatform,
+} from "../utils/platform.js";
 
 const SEED_PREFIX = ["AI", "za", "Sy"].join("");
 
@@ -91,18 +96,23 @@ export function computeAudioNoise(profileId: string): number {
 }
 
 /**
- * Builds a clean Google Chrome User-Agent without Electron or custom application tokens.
+ * Builds a clean Google Chrome User-Agent without Electron or custom application tokens
+ * for the target OS (`Windows`, `macOS`, `Linux`) and CPU architecture (`arm64`, `x64`).
  */
 export function buildCleanChromeUserAgent(
   chromeFullVersion = "153.0.8010.27",
-  osPlatform: "Windows" | "macOS" | "Linux" = "Windows",
+  osPlatform?: SupportedOsPlatform,
+  cpuArch?: SupportedCpuArch,
 ): string {
+  const descriptor = osPlatformToDescriptor(osPlatform, cpuArch);
   const major = chromeFullVersion.split(".")[0] || "153";
-  if (osPlatform === "macOS") {
+  if (descriptor.osPlatform === "macOS") {
     return `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`;
   }
-  if (osPlatform === "Linux") {
-    return `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`;
+  if (descriptor.osPlatform === "Linux") {
+    const linuxToken =
+      descriptor.cpuArch === "arm64" ? "X11; Linux aarch64" : "X11; Linux x86_64";
+    return `Mozilla/5.0 (${linuxToken}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`;
   }
   return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`;
 }
@@ -143,27 +153,26 @@ export function computeChromeValidationHeaders(
 
 /**
  * Builds matching `Sec-CH-UA*` Client Hints headers that present the browser
- * as official Google Chrome on 64-bit desktop systems.
+ * as official Google Chrome on the target OS (`Windows`, `macOS`, `Linux`) and CPU architecture (`arm64`, `x64`).
  */
 export function buildChromeClientHintsHeaders(
   chromeFullVersion = "153.0.8010.27",
-  osPlatform: "Windows" | "macOS" | "Linux" = "Windows",
+  osPlatform?: SupportedOsPlatform,
+  cpuArch?: SupportedCpuArch,
 ): ChromeClientHintsHeaders {
+  const descriptor = osPlatformToDescriptor(osPlatform, cpuArch);
   const major = chromeFullVersion.split(".")[0] || "153";
-  const platformVersion =
-    osPlatform === "Windows" ? "15.0.0" : osPlatform === "macOS" ? "14.5.0" : "6.8.0";
-  const arch = osPlatform === "macOS" ? "arm" : "x86";
 
   return {
     "sec-ch-ua": `"Chromium";v="${major}", "Not:A-Brand";v="24", "Google Chrome";v="${major}"`,
     "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": `"${osPlatform}"`,
-    "sec-ch-ua-arch": `"${arch}"`,
+    "sec-ch-ua-platform": `"${descriptor.osPlatform}"`,
+    "sec-ch-ua-arch": `"${descriptor.clientHintArch}"`,
     "sec-ch-ua-bitness": '"64"',
     "sec-ch-ua-full-version": `"${chromeFullVersion}"`,
     "sec-ch-ua-full-version-list": `"Chromium";v="${chromeFullVersion}", "Not:A-Brand";v="24.0.0.0", "Google Chrome";v="${chromeFullVersion}"`,
     "sec-ch-ua-model": '""',
-    "sec-ch-ua-platform-version": `"${platformVersion}"`,
+    "sec-ch-ua-platform-version": `"${descriptor.clientHintPlatformVersion}"`,
     "sec-ch-ua-wow64": "?0",
   };
 }
@@ -177,31 +186,26 @@ export function buildBrowserStealthInitScript(
   options: {
     userAgent?: string;
     chromeFullVersion?: string;
-    osPlatform?: "Windows" | "macOS" | "Linux";
+    osPlatform?: SupportedOsPlatform;
+    cpuArch?: SupportedCpuArch;
     languages?: string[];
     webglVendor?: string;
     webglRenderer?: string;
   } = {},
 ): string {
+  const descriptor = osPlatformToDescriptor(options.osPlatform, options.cpuArch);
   const fullVersion = options.chromeFullVersion ?? "153.0.8010.27";
   const major = fullVersion.split(".")[0] || "153";
-  const osPlatform = options.osPlatform ?? "Windows";
+  const osPlatform = descriptor.osPlatform;
   const userAgent =
-    options.userAgent ?? buildCleanChromeUserAgent(fullVersion, osPlatform);
-  const navPlatform =
-    osPlatform === "macOS"
-      ? "MacIntel"
-      : osPlatform === "Linux"
-        ? "Linux x86_64"
-        : "Win32";
-  const platformVersion =
-    osPlatform === "Windows" ? "15.0.0" : osPlatform === "macOS" ? "14.5.0" : "6.8.0";
-  const arch = osPlatform === "macOS" ? "arm" : "x86";
+    options.userAgent ??
+    buildCleanChromeUserAgent(fullVersion, osPlatform, descriptor.cpuArch);
+  const navPlatform = descriptor.navigatorPlatform;
+  const platformVersion = descriptor.clientHintPlatformVersion;
+  const arch = descriptor.clientHintArch;
   const languages = options.languages ?? ["ko-KR", "ko", "en-US", "en"];
-  const webglVendor = options.webglVendor ?? "Google Inc. (NVIDIA)";
-  const webglRenderer =
-    options.webglRenderer ??
-    "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)";
+  const webglVendor = options.webglVendor ?? descriptor.webglVendor;
+  const webglRenderer = options.webglRenderer ?? descriptor.webglRenderer;
 
   const cfgJson = JSON.stringify({
     userAgent,
@@ -330,7 +334,7 @@ export function buildBrowserStealthInitScript(
   } catch {}
 
   try {
-    // 5. Spoof WebGL Vendor & Renderer (NVIDIA GeForce RTX 3060 Direct3D11)
+    // 5. Spoof WebGL Vendor & Renderer
     const patchWebGL = (proto) => {
       if (!proto || !proto.getParameter) return;
       const origGetParameter = proto.getParameter;
@@ -392,7 +396,14 @@ export function buildBrowserStealthInitScript(
  */
 export async function ensureChromeStealthExtension(
   baseDataDir: string,
+  options: {
+    osPlatform?: SupportedOsPlatform;
+    cpuArch?: SupportedCpuArch;
+    chromeFullVersion?: string;
+  } = {},
 ): Promise<string> {
+  const descriptor = osPlatformToDescriptor(options.osPlatform, options.cpuArch);
+  const chromeFullVersion = options.chromeFullVersion ?? "153.0.8010.27";
   const extDir = path.join(baseDataDir, "extensions", "chrome_stealth_assistant");
   await mkdir(extDir, { recursive: true });
 
@@ -496,9 +507,14 @@ installValidationRules();
 `;
 
   const contentHumanPasteJs = buildBrowserStealthInitScript({
-    userAgent: buildCleanChromeUserAgent("153.0.8010.27", "Windows"),
-    chromeFullVersion: "153.0.8010.27",
-    osPlatform: "Windows",
+    userAgent: buildCleanChromeUserAgent(
+      chromeFullVersion,
+      descriptor.osPlatform,
+      descriptor.cpuArch,
+    ),
+    chromeFullVersion,
+    osPlatform: descriptor.osPlatform,
+    cpuArch: descriptor.cpuArch,
   });
 
   await writeFile(
@@ -533,33 +549,39 @@ export async function compileChromiumStealthProfile(options: {
   profileDir: string;
   extensionPaths?: string[];
   chromeFullVersion?: string;
+  osPlatform?: SupportedOsPlatform;
+  cpuArch?: SupportedCpuArch;
 }): Promise<CompiledChromiumStealthProfile> {
+  const descriptor = osPlatformToDescriptor(options.osPlatform, options.cpuArch);
   const pid = options.profileId;
   const profileDir = path.resolve(options.profileDir);
   const chromeFullVersion = options.chromeFullVersion ?? "153.0.8010.27";
-  const userAgent = buildCleanChromeUserAgent(chromeFullVersion, "Windows");
+  const userAgent = buildCleanChromeUserAgent(
+    chromeFullVersion,
+    descriptor.osPlatform,
+    descriptor.cpuArch,
+  );
 
   await mkdir(profileDir, { recursive: true });
 
   const staticMd5Name = md5Hex(`${pid}_static`);
   const dynamicMd5Name = md5Hex(`${pid}_webrtc`);
-  const webglMd5Name = `${md5Hex(`${pid}_webgl`)}_Windows`;
+  const webglMd5Name = `${md5Hex(`${pid}_webgl`)}_${descriptor.webglSidecarSuffix}`;
 
   const staticPath = path.join(profileDir, staticMd5Name);
   const dynamicPath = path.join(profileDir, dynamicMd5Name);
   const webglPath = path.join(profileDir, webglMd5Name);
 
   const webglFpPayload = {
-    UNMASKED_VENDOR_WEBGL: "Google Inc. (NVIDIA)",
-    UNMASKED_RENDERER_WEBGL:
-      "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    UNMASKED_VENDOR_WEBGL: descriptor.webglVendor,
+    UNMASKED_RENDERER_WEBGL: descriptor.webglRenderer,
     SUPPORTED_EXTENSIONS: [],
     VERSION: "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
     SHADING_LANGUAGE_VERSION:
       "WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)",
     GPUAdapterInfo: {
-      vendor: "nvidia",
-      architecture: "ampere",
+      vendor: descriptor.osPlatform === "macOS" ? "apple" : "nvidia",
+      architecture: descriptor.osPlatform === "macOS" ? "apple-silicon" : "ampere",
     },
   };
   await writeFile(webglPath, JSON.stringify(webglFpPayload), "utf8");
@@ -567,7 +589,7 @@ export async function compileChromiumStealthProfile(options: {
   const kernelParams: Record<string, unknown> = {
     UserId: "1",
     StartTime: Math.floor(Date.now() / 1000),
-    Platform: "Win32",
+    Platform: descriptor.navigatorPlatform,
     DisableContainer: true,
     DisableBackgroundMode: true,
     LoadExtensionErrorBox: false,
@@ -596,9 +618,9 @@ export async function compileChromiumStealthProfile(options: {
     CanvasMarkEx: kernelParams.CanvasMark,
     WebGLMarkEx: kernelParams.WebGLMark,
     UserAgentMetadata: {
-      platform: "Windows",
-      platformVersion: "15.0.0",
-      architecture: "x86",
+      platform: descriptor.osPlatform,
+      platformVersion: descriptor.clientHintPlatformVersion,
+      architecture: descriptor.clientHintArch,
       model: "",
       mobile: false,
       wow64: false,
@@ -610,9 +632,9 @@ export async function compileChromiumStealthProfile(options: {
     WebRTCAllowScanPorts: "0",
     AutomationControlled: false,
     MediaDevices: [
-      { kind: "audioinput", label: "Microphone (Realtek High Definition Audio)" },
+      { kind: "audioinput", label: "Microphone (High Definition Audio)" },
       { kind: "videoinput", label: "HD Pro Webcam C920" },
-      { kind: "audiooutput", label: "Speakers (Realtek High Definition Audio)" },
+      { kind: "audiooutput", label: "Speakers (High Definition Audio)" },
     ],
   };
 

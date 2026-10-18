@@ -3,20 +3,60 @@ const { webFrame } = require("electron");
 const CHROME_FULL_VERSION =
   process.versions.chrome || "153.0.8010.27";
 const CHROME_MAJOR = CHROME_FULL_VERSION.split(".")[0] || "153";
-const CLEAN_USER_AGENT = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_MAJOR}.0.0.0 Safari/537.36`;
 
-const MAIN_WORLD_STEALTH_SCRIPT = `(function() {
-  const cfg = {
-    userAgent: ${JSON.stringify(CLEAN_USER_AGENT)},
-    fullVersion: ${JSON.stringify(CHROME_FULL_VERSION)},
-    major: ${JSON.stringify(CHROME_MAJOR)},
+function resolvePreloadPlatformConfig() {
+  const plat = process.platform;
+  const isArm = process.arch === "arm64";
+  if (plat === "darwin") {
+    return {
+      userAgent: `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_MAJOR}.0.0.0 Safari/537.36`,
+      osPlatform: "macOS",
+      navPlatform: "MacIntel",
+      platformVersion: "14.5.0",
+      arch: "arm",
+      webglVendor: "Google Inc. (Apple)",
+      webglRenderer: "ANGLE (Apple, Apple M3, OpenGL 4.1)",
+    };
+  }
+  if (plat === "linux") {
+    const linuxToken = isArm ? "X11; Linux aarch64" : "X11; Linux x86_64";
+    return {
+      userAgent: `Mozilla/5.0 (${linuxToken}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_MAJOR}.0.0.0 Safari/537.36`,
+      osPlatform: "Linux",
+      navPlatform: isArm ? "Linux aarch64" : "Linux x86_64",
+      platformVersion: "6.8.0",
+      arch: isArm ? "arm" : "x86",
+      webglVendor: "Google Inc. (Mesa)",
+      webglRenderer:
+        "ANGLE (Mesa, Mesa Intel(R) UHD Graphics (CML GT2), OpenGL 4.6)",
+    };
+  }
+  return {
+    userAgent: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_MAJOR}.0.0.0 Safari/537.36`,
     osPlatform: "Windows",
     navPlatform: "Win32",
     platformVersion: "15.0.0",
-    arch: "x86",
-    languages: ["ko-KR", "ko", "en-US", "en"],
+    arch: isArm ? "arm" : "x86",
     webglVendor: "Google Inc. (NVIDIA)",
-    webglRenderer: "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    webglRenderer:
+      "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  };
+}
+
+const HOST_CFG = resolvePreloadPlatformConfig();
+
+const MAIN_WORLD_STEALTH_SCRIPT = `(function() {
+  const cfg = {
+    userAgent: ${JSON.stringify(HOST_CFG.userAgent)},
+    fullVersion: ${JSON.stringify(CHROME_FULL_VERSION)},
+    major: ${JSON.stringify(CHROME_MAJOR)},
+    osPlatform: ${JSON.stringify(HOST_CFG.osPlatform)},
+    navPlatform: ${JSON.stringify(HOST_CFG.navPlatform)},
+    platformVersion: ${JSON.stringify(HOST_CFG.platformVersion)},
+    arch: ${JSON.stringify(HOST_CFG.arch)},
+    languages: ["ko-KR", "ko", "en-US", "en"],
+    webglVendor: ${JSON.stringify(HOST_CFG.webglVendor)},
+    webglRenderer: ${JSON.stringify(HOST_CFG.webglRenderer)}
   };
 
   try {
