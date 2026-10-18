@@ -53,6 +53,15 @@
   "engines": {
     "node": ">=22.0.0"
   },
+  "os": [
+    "darwin",
+    "win32",
+    "linux"
+  ],
+  "cpu": [
+    "arm64",
+    "x64"
+  ],
   "pnpm": {
     "onlyBuiltDependencies": [
       "electron",
