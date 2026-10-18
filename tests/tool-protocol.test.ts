@@ -4,6 +4,7 @@ import {
   compileGeminiWebTurn,
   compileGeminiWebTurnWithFallback,
   extractIncrementalContents,
+  formatToolProtocolInstructions,
   isInternalMonitorRequest,
   parseGeminiWebModelOutput,
   stripToolCallFenceLeftovers,
@@ -497,5 +498,30 @@ describe("tool-protocol", () => {
     expect(compiled.bootstrapFallback?.inlinePrompt).toContain("follow-up");
 
     expect(compileGeminiWebTurnWithFallback(payload).bootstrapFallback).toBeUndefined();
+  });
+
+  it("adapts tool execution protocol prompt to macOS Apple Silicon, Linux (x64/ARM64), and Windows (x64/ARM64)", () => {
+    const declarations = sampleTools[0].functionDeclarations;
+
+    const macPrompt = formatToolProtocolInstructions(declarations, "darwin", "arm64");
+    expect(macPrompt).toContain("macOS (arm64)");
+    expect(macPrompt).toContain("zsh terminal");
+    expect(macPrompt).toContain("ls -la");
+
+    const linuxArmPrompt = formatToolProtocolInstructions(declarations, "linux", "arm64");
+    expect(linuxArmPrompt).toContain("Linux (arm64)");
+    expect(linuxArmPrompt).toContain("bash terminal");
+    expect(linuxArmPrompt).toContain("/home/dev/workspace/my-project");
+
+    const linuxX64Prompt = formatToolProtocolInstructions(declarations, "linux", "x64");
+    expect(linuxX64Prompt).toContain("Linux (x64)");
+
+    const winX64Prompt = formatToolProtocolInstructions(declarations, "win32", "x64");
+    expect(winX64Prompt).toContain("Windows (x64)");
+    expect(winX64Prompt).toContain("PowerShell terminal");
+    expect(winX64Prompt).toContain("Get-ChildItem -Force");
+
+    const winArmPrompt = formatToolProtocolInstructions(declarations, "win32", "arm64");
+    expect(winArmPrompt).toContain("Windows (arm64)");
   });
 });

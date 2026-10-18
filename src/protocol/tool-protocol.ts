@@ -10,6 +10,7 @@ import type {
   ParsedGeminiWebOutput,
   ParsedGeminiWebToolCall,
 } from "../types.js";
+import { resolvePlatformDescriptor } from "../utils/platform.js";
 
 export const TOOL_CALL_OPEN_TAG = "<antigravity_tool_call>";
 export const TOOL_CALL_CLOSE_TAG = "</antigravity_tool_call>";
@@ -363,11 +364,14 @@ export function compactSystemInstructionText(systemText: string, maxChars = 7500
 
 export function formatToolProtocolInstructions(
   declarations: GeminiFunctionDeclaration[],
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
 ): string {
   if (declarations.length === 0) {
     return "";
   }
 
+  const desc = resolvePlatformDescriptor(platform, arch);
   const compactTools = declarations.map((decl) => ({
     name: decl.name,
     description: summarizeTextOneLine(decl.description, 160),
@@ -378,15 +382,15 @@ export function formatToolProtocolInstructions(
 
   return [
     "## Antigravity Local Tool Execution Protocol (MANDATORY)",
-    "You are Antigravity, running directly on the user's local Windows computer via a real-time tool bridge.",
-    "You HAVE full access to the user's local filesystem, directories, and PowerShell terminal through the tools below.",
+    `You are Antigravity, running directly on the user's local ${desc.osPlatform} (${desc.cpuArch}) computer via a real-time tool bridge.`,
+    `You HAVE full access to the user's local filesystem, directories, and ${desc.shellName} terminal through the tools below.`,
     "NEVER claim you cannot access the user's computer or ask the user to manually look up files when you can call a tool (`run_command`, `view_file`, `write_to_file`, `replace_file_content`, etc.) yourself.",
     "Whenever you need to invoke one or more tools from the catalog below, emit ONLY a tool call block using the exact XML tag `<antigravity_tool_call>` at the end of your message and then STOP immediately so the local runtime can execute it and return `<antigravity_tool_result>` in the next message.",
     "",
     "### Tool Call Output Format",
     "Single tool call:",
     TOOL_CALL_OPEN_TAG,
-    '{"name": "run_command", "args": {"CommandLine": "Get-ChildItem -Force", "Cwd": "C:\\\\workspace\\\\my-project", "WaitMsBeforeAsync": 5000, "toolSummary": "List workspace files", "toolAction": "Listing workspace files"}}',
+    `{"name": "run_command", "args": {"CommandLine": "${desc.exampleListCommand}", "Cwd": "${desc.exampleWorkspacePath}", "WaitMsBeforeAsync": 5000, "toolSummary": "List workspace files", "toolAction": "Listing workspace files"}}`,
     TOOL_CALL_CLOSE_TAG,
     "",
     "Multiple parallel tool calls (when independent):",
@@ -566,6 +570,8 @@ export interface CompileGeminiWebTurnOptions {
   previousContents?: GeminiContent[];
   sessionKeyOverride?: string;
   inlineThresholdChars?: number;
+  platform?: NodeJS.Platform;
+  arch?: string;
 }
 
 export function compileGeminiWebTurn(
@@ -580,6 +586,7 @@ export function compileGeminiWebTurn(
     options.sessionKeyOverride ?? deriveConversationSessionKey(inner);
   const inlineLimit =
     options.inlineThresholdChars ?? DEFAULT_INLINE_BOOTSTRAP_LIMIT;
+  const desc = resolvePlatformDescriptor(options.platform, options.arch);
 
   const incrementalDelta = extractIncrementalContents(
     options.previousContents,
@@ -595,7 +602,7 @@ export function compileGeminiWebTurn(
     if (declarations.length > 0) {
       reminder = hasToolResults
         ? `\n\nContinue based on the tool result(s) above. If you need another tool call (${expectedToolNames.slice(0, 6).join(", ")}), emit ${TOOL_CALL_OPEN_TAG}{"name": "...", "args": {...}}${TOOL_CALL_CLOSE_TAG} and stop; otherwise provide your final response.`
-        : `\n\n[Antigravity Tool Bridge Reminder: You have direct access to the user's local Windows PC and filesystem via tools (${expectedToolNames.join(", ")}). If this request involves checking files, folders, commands, or code, DO NOT ask the user — emit ${TOOL_CALL_OPEN_TAG}{"name": "<tool_name>", "args": {...}}${TOOL_CALL_CLOSE_TAG} immediately and stop.]`;
+        : `\n\n[Antigravity Tool Bridge Reminder: You have direct access to the user's local ${desc.osPlatform} (${desc.cpuArch}) machine and filesystem via tools (${expectedToolNames.join(", ")}). If this request involves checking files, folders, commands, or code, DO NOT ask the user — emit ${TOOL_CALL_OPEN_TAG}{"name": "<tool_name>", "args": {...}}${TOOL_CALL_CLOSE_TAG} immediately and stop.]`;
     }
 
     const formattedDelta = formatContentsWithinBudget(
@@ -638,11 +645,15 @@ export function compileGeminiWebTurn(
     options.inlineThresholdChars !== undefined && options.inlineThresholdChars < 5000
       ? rawSystemText
       : compactSystemInstructionText(rawSystemText, 7500);
-  const toolInstructions = formatToolProtocolInstructions(declarations);
+  const toolInstructions = formatToolProtocolInstructions(
+    declarations,
+    options.platform,
+    options.arch,
+  );
 
   const closingDirective =
     declarations.length > 0
-      ? `IMPORTANT: You are connected to the user's local PC via the Antigravity bridge. When you need to inspect files, directories, or run commands, emit ${TOOL_CALL_OPEN_TAG}{"name": "<tool_name>", "args": {...}}${TOOL_CALL_CLOSE_TAG} and stop.`
+      ? `IMPORTANT: You are connected to the user's local ${desc.osPlatform} (${desc.cpuArch}) machine via the Antigravity bridge. When you need to inspect files, directories, or run commands, emit ${TOOL_CALL_OPEN_TAG}{"name": "<tool_name>", "args": {...}}${TOOL_CALL_CLOSE_TAG} and stop.`
       : "";
 
   const fixedOverhead =
