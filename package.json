@@ -1,0 +1,63 @@
+{
+  "name": "antigravity-gemini-web",
+  "version": "0.1.0",
+  "description": "Local Cloud Code PA (v1internal) reverse proxy and CDP driver that bridges Google Antigravity IDE agent sessions and local tool execution to Gemini Web.",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Rami9112/antigravity-gemini-web.git"
+  },
+  "homepage": "https://github.com/Rami9112/antigravity-gemini-web#readme",
+  "bugs": {
+    "url": "https://github.com/Rami9112/antigravity-gemini-web/issues"
+  },
+  "keywords": [
+    "antigravity",
+    "gemini",
+    "gemini-web",
+    "cloudcode-pa",
+    "cdp",
+    "electron",
+    "playwright"
+  ],
+  "bin": {
+    "antigravity-gemini-web": "./dist/cli.js"
+  },
+  "scripts": {
+    "start": "tsc -p tsconfig.build.json && node dist/cli.js serve",
+    "sniff": "tsc -p tsconfig.build.json && node dist/cli.js sniff",
+    "browser": "tsc -p tsconfig.build.json && node dist/cli.js browser",
+    "browser:chrome": "tsc -p tsconfig.build.json && node dist/cli.js browser --chrome",
+    "doctor": "tsc -p tsconfig.build.json && node dist/cli.js doctor",
+    "hook:status": "tsc -p tsconfig.build.json && node dist/cli.js hook status",
+    "hook:install": "tsc -p tsconfig.build.json && node dist/cli.js hook install",
+    "hook:uninstall": "tsc -p tsconfig.build.json && node dist/cli.js hook uninstall",
+    "hook:launch": "tsc -p tsconfig.build.json && node dist/cli.js hook launch",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit --pretty false",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "playwright-core": "^1.52.0",
+    "turndown": "^7.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "@types/turndown": "^5.0.5",
+    "electron": "^35.0.0",
+    "tsx": "^4.19.3",
+    "typescript": "5.8.2",
+    "vitest": "^3.0.8"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ]
+  },
+  "license": "MIT"
+}
