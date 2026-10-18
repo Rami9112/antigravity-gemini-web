@@ -147,9 +147,14 @@ Running `pnpm start` (`node dist/cli.js serve`) automatically:
 
 ```text
 antigravity-gemini-web/
+├── .github/workflows/
+│   └── ci.yml                     # 5-target matrix CI workflow (macOS arm64, Win x64/arm64, Linux x64/arm64)
 ├── host/
 │   ├── electron-host.cjs          # Multi-slot Electron WebContentsView host with OS/arch-aware Chrome headers
 │   └── chrome-preload.cjs         # Main-world navigator/WebGL stealth & Alt+P human paste preload
+├── scripts/
+│   ├── check-repo.mjs             # Offline repo integrity, manifest, secret-leak & CJS syntax checker
+│   └── verify.sh                  # Unified verification pipeline (check-repo + typecheck + build + tests)
 ├── src/
 │   ├── cli.ts                     # CLI entrypoint (serve, browser, doctor, sniff, hook)
 │   ├── index.ts                   # Public library exports
@@ -168,7 +173,7 @@ antigravity-gemini-web/
 │   │   └── chromium-launcher.ts   # Cross-platform Chrome/Chromium stealth profile launcher
 │   └── utils/
 │       └── platform.ts            # Runtime resolver for darwin-arm64, win32-arm64/x64, linux-x64/arm64
-└── tests/                         # Unit, live DOM fixture, and full CDP E2E test suites
+└── tests/                         # Unit, repo-integrity, live DOM fixture, and full CDP E2E test suites
 ```
 
 ---
@@ -176,6 +181,9 @@ antigravity-gemini-web/
 ## Development & Verification
 
 ```bash
+pnpm verify      # Run check-repo + typecheck + build + unit test suite
+bash scripts/verify.sh        # Unified CI verification pipeline
+bash scripts/verify.sh --full # Unified verification pipeline + full CDP E2E suite
 pnpm typecheck   # Run TypeScript strict type checking
 pnpm build       # Compile TypeScript to dist/
 pnpm test        # Run Vitest unit + CDP E2E test suites
@@ -186,3 +194,4 @@ pnpm test        # Run Vitest unit + CDP E2E test suites
 ## License
 
 [MIT](./LICENSE)
+

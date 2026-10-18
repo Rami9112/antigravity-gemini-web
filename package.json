@@ -36,7 +36,12 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit --pretty false",
-    "test": "vitest run"
+    "check:repo": "node scripts/check-repo.mjs",
+    "test": "vitest run",
+    "test:unit": "vitest run --exclude tests/*.e2e.test.ts",
+    "test:e2e": "vitest run tests/gemini-web-driver.e2e.test.ts",
+    "verify": "node scripts/check-repo.mjs && pnpm typecheck && pnpm build && pnpm test:unit",
+    "verify:full": "node scripts/check-repo.mjs && pnpm typecheck && pnpm build && pnpm test"
   },
   "dependencies": {
     "playwright-core": "^1.52.0",
